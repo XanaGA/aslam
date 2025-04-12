@@ -4,8 +4,77 @@ import plotly.graph_objects as go
 from scipy.spatial.transform import Rotation as R
 import copy
 import open3d as o3d
+import matplotlib.pyplot as plt
 
 
+def plot_error_evolution(errors, error_type, color='b', figsize=(10, 6)):
+    """
+    Plot error evolution over frames.
+    
+    Parameters:
+    errors (list/np.array): List of error values to plot
+    error_type (str): Type of error ('Translation', 'Rotation', or 'RMSE')
+    color (str): Matplotlib color code
+    figsize (tuple): Figure size
+    """
+    plt.figure(figsize=figsize)
+    frames = range(1, len(errors)+1)  # X-axis starts at frame 1
+    
+    plt.plot(frames, errors, 
+             color=color, 
+             marker='o', 
+             linestyle='-', 
+             linewidth=1.5, 
+             markersize=4)
+    
+    plt.xlabel('X-Frame', fontsize=12)
+    plt.ylabel('Y-Error', fontsize=12)
+    plt.title(f'{error_type} Error Evolution', fontsize=14)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+def create_o3d_from_numpy(np_points, np_colors):
+    res = o3d.geometry.PointCloud()
+    res.points = o3d.utility.Vector3dVector(np_points)
+
+    if isinstance(np_colors, list):
+        np_colors = np.array(np_colors)
+    if len(np_colors.shape) == 1:
+        np_colors = np_colors[None]
+    if len(np_colors) == 1:
+        res.paint_uniform_color(np_colors[0])
+    else:
+        res.colors = o3d.utility.Vector3dVector(np_colors)
+        
+    return res
+
+def read_pointclouds(source_idx, target_idx):
+    color_raw = o3d.io.read_image('lab1/data/livingroom1-color/%(number)05d.jpg'%{"number": source_idx})
+    depth_raw = o3d.io.read_image('lab1/data/livingroom1-depth-clean/%(number)05d.png'%{"number": source_idx})
+    rgbd_image0 = o3d.geometry.RGBDImage.create_from_color_and_depth(color_raw, depth_raw, convert_rgb_to_intensity=False)
+
+    color_raw = o3d.io.read_image('lab1/data/livingroom1-color/%(number)05d.jpg'%{"number": target_idx})
+    depth_raw = o3d.io.read_image('lab1/data/livingroom1-depth-clean/%(number)05d.png'%{"number": target_idx})
+    rgbd_image1 = o3d.geometry.RGBDImage.create_from_color_and_depth(color_raw, depth_raw, convert_rgb_to_intensity=False)
+
+    source = o3d.geometry.PointCloud.create_from_rgbd_image(
+            rgbd_image0,
+            o3d.camera.PinholeCameraIntrinsic(
+            o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault))
+    # Flip it, otherwise the pointcloud will be upside down
+    # source.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+    source.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+
+    target = o3d.geometry.PointCloud.create_from_rgbd_image(
+            rgbd_image1,
+            o3d.camera.PinholeCameraIntrinsic(
+            o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault))
+    # Flip it, otherwise the pointcloud will be upside down
+    # target.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+    target.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+
+    return source, target, rgbd_image0, rgbd_image1
 
 def draw_registration_result(source, target, transformation):
     source_temp = copy.deepcopy(source)
