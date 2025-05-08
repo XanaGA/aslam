@@ -3,6 +3,7 @@ import os
 import matplotlib
 matplotlib.use('TkAgg')  # Use Tkinter, Qt5, WebAgg, etc.
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 class bcolors:
     HEADER = '\033[95m'
@@ -28,18 +29,21 @@ if __name__ == '__main__':
     ##########################################################################################################
     # Configuration
     ##########################################################################################################
-    method = "icp" # ransac, all
+    method = "all" # ransac, all, icp
     separation = 1
     visual = False
+    examples = 500
     ##########################################################################################################
 
     all_tans_errors = []
     all_rot_errors = []
 
-    for i in range(50): #range(len(rgdfiles)):
+    traj = read_trajectory('/home/xavi/master_code/aslam/lab1/data/livingroom1-traj.txt')
+    examples = len(traj)-separation if examples==-1 else examples
+    for i in tqdm(range(500)): #range(len(rgdfiles)):
         # print(rgdfiles[i])
         
-        source, target, _, _ = read_pointclouds(i+separation, i)
+        source, target, _, _ = read_pointclouds(i+separation, i, path_depth)
 
         threshold = 0.02
         trans_init = np.asarray([[1, 0, 0, 0],
@@ -49,8 +53,6 @@ if __name__ == '__main__':
         if visual:
             draw_registration_result(source, target, trans_init)
 
-        traj = read_trajectory('/home/xavi/master_code/aslam/lab1/data/livingroom1-traj.txt')
-
         if method == "icp":
             reg_p2p = o3d.pipelines.registration.registration_icp(
                                     source, target, threshold, trans_init,
@@ -58,7 +60,7 @@ if __name__ == '__main__':
             T_ts = reg_p2p.transformation
                 
         elif method in ["ransac", "all"] :
-            print("Apply RANSAC")
+            # print("Apply RANSAC")
             voxel_size = 0.05
             source_down, source_fpfh = preprocess_point_cloud(source, voxel_size)
             target_down, target_fpfh = preprocess_point_cloud(target, voxel_size)
@@ -100,6 +102,21 @@ if __name__ == '__main__':
     print(f"\n{bcolors.HEADER}Pose error:{bcolors.ENDC}")
     print(f"Translation norm: {np.mean(all_tans_errors):4f} ({np.std(all_tans_errors):4f})")
     print(f"Rotation norm: {np.mean(all_rot_errors):4f} ({np.std(all_rot_errors):4f})")
+
+    top10_indices_trans = np.argsort(all_tans_errors)[-10:][::-1]
+    top10_indices_rot = np.argsort(all_rot_errors)[-10:][::-1]
+    print(f"Top Translation norm: {top10_indices_trans}")
+    print(f"Top Translation norm: {np.array(all_tans_errors)[top10_indices_trans]}")
+    print(f"Top Rotation norm: {top10_indices_trans}")
+    print(f"Top Rotation norm: {np.array(all_rot_errors)[top10_indices_rot]}")
+
+
+    # Plot error evolution
+    plot_error_evolution(all_tans_errors, 'Translation', color='blue')
+    plot_error_evolution(all_rot_errors, 'Rotation', color='blue')
+
+    plot_error_evolution(np.delete(all_tans_errors, top10_indices_trans), 'Translation', color='blue')
+    plot_error_evolution(np.delete(all_rot_errors, top10_indices_rot), 'Rotation', color='blue')
 
 # Test separating a lot the frames, not consecuteve, but 1-5, 1-10 and check 
 # Compare point-to-point and point-to-plane
